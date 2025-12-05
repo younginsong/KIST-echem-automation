@@ -1,4 +1,4 @@
 streamlit
 gspread
-google-api-python-client
-google-auth
+oauth2client
+google-cloud-storage
