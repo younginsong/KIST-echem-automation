@@ -1,66 +1,87 @@
 import streamlit as st
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from google.cloud import storage
 import datetime
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
 # ==========================================
-# [설정] 구글 클라우드 스토리지 버킷 이름
+# [기능] 이메일 발송 함수 (파일 첨부 포함)
 # ==========================================
-# ★ 중요: 방금 만든 버킷(창고) 이름을 정확히 넣으세요!
-BUCKET_NAME = "kist-echem-automation"  # 예: "kist-lab-receipts-2025-ahy"
-
-
-# ==========================================
-# [기능 1] 구글 클라우드 스토리지(GCS) 업로드
-# ==========================================
-def upload_to_gcs(file_obj, filename):
+def send_email_with_attachments(data_summary, files_dict):
     try:
-        # 1. Secrets에서 인증 정보로 클라이언트 생성
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        client = storage.Client.from_service_account_info(creds_dict)
-        
-        # 2. 버킷 선택 및 파일 업로드
-        bucket = client.bucket(BUCKET_NAME)
-        blob = bucket.blob(filename)
-        
-        # 파일 포인터를 처음으로 되돌림 (중요)
-        file_obj.seek(0)
-        blob.upload_from_file(file_obj, content_type=file_obj.type)
-        
-        # 3. 접근 가능한 링크 생성 (인증된 사용자용 링크)
-        # 이 링크는 권한이 있는 사람(안희영님)만 열 수 있습니다.
-        link = f"https://storage.cloud.google.com/{BUCKET_NAME}/{filename}"
-        return link
+        # Secrets에서 이메일 정보 가져오기
+        sender_email = st.secrets["email"]["sender_address"]
+        sender_pass = st.secrets["email"]["sender_password"]
+        receiver_email = st.secrets["email"]["receiver_address"]
 
-    except Exception as e:
-        st.error(f"창고 저장 실패: {e}")
-        return None
+        # 이메일 기본 설정
+        msg = MIMEMultipart()
+        msg['Subject'] = f"[연구비제출] {data_summary['성명']} - {data_summary['항목']} ({data_summary['날짜']})"
+        msg['From'] = sender_email
+        msg['To'] = receiver_email
 
-# ==========================================
-# [기능 2] 구글 시트 저장 함수
-# ==========================================
-def save_to_google_sheets(data):
-    try:
-        scope = ['https://spreadsheets.google.com/feeds', 'https://www.googleapis.com/auth/drive']
-        creds_dict = dict(st.secrets["gcp_service_account"])
-        creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
-        client = gspread.authorize(creds)
+        # 본문 내용 작성 (HTML)
+        body = f"""
+        <h3>🧾 연구비 증빙 서류 제출 알림</h3>
+        <p>연구비 지출 증빙 서류가 접수되었습니다.</p>
+        <p>첨부된 파일들을 확인하여 행정 시스템에 등록 부탁드립니다.</p>
+        <hr>
+        <ul>
+            <li><b>성명:</b> {data_summary['성명']}</li>
+            <li><b>과제명:</b> {data_summary['과제']}</li>
+            <li><b>지출항목:</b> {data_summary['항목']} ({data_summary['결제수단']})</li>
+            <li><b>고액여부:</b> {data_summary['고액']}</li>
+            <li><b>사유/내용:</b> {data_summary['사유']}</li>
+            <li><b>제출일시:</b> {data_summary['날짜']}</li>
+        </ul>
+        <hr>
+        <p>※ 이 메일은 Streamlit 앱에서 자동 발송되었습니다.</p>
+        """
+        msg.attach(MIMEText(body, 'html'))
+
+        # 파일 첨부하기
+        for key, file_obj in files_dict.items():
+            if file_obj is not None:
+                # 파일 포인터를 처음으로 되돌림
+                file_obj.seek(0)
+                
+                # 파일 이름 정리 (한글 깨짐 방지 등은 메일 클라이언트에 따라 다르지만, 식별 가능한 이름으로 전송)
+                # 예: 20250505_안희영_재료비_영수증.png
+                safe_name = f"{data_summary['날짜'][:10]}_{data_summary['성명']}_{key}_{file_obj.name}"
+                
+                # 파일 읽어서 첨부
+                part = MIMEApplication(file_obj.read(), Name=safe_name)
+                part.add_header('Content-Disposition', 'attachment', filename=safe_name)
+                msg.attach(part)
+
+        # 메일 서버 연결 및 전송 (Gmail)
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(sender_email, sender_pass)
+            server.send_message(msg)
         
-        sheet = client.open("log_sheet").sheet1 
-        sheet.append_row(data)
         return True
     except Exception as e:
-        st.error(f"엑셀 저장 실패: {e}")
+        st.error(f"📧 메일 발송 실패: {e}")
         return False
 
+
 # ==========================================
-# [UI] 화면 구성 (이전과 동일)
+# [UI] 화면 구성
 # ==========================================
 st.set_page_config(page_title="연구비 증빙 제출 시스템", page_icon="🧾", layout="wide")
 st.title("🧾 연구비 지출 증빙 제출 시스템")
-st.markdown("### 🚨 안내: 파일은 구글 클라우드 창고(GCS)에 저장됩니다.")
+st.markdown("### 🚨 안내: 작성된 내용은 담당자에게 메일로 전송됩니다.")
 st.divider()
+
+# [STEP 0] 사용자 이름 입력
+st.subheader("0. 신청자 정보")
+user_name = st.selectbox("신청자 성명", ["선택하세요", "안희영", "김철수", "이영희", "박민수"])
+
+if user_name == "선택하세요":
+    st.info("성명을 먼저 선택해주세요.")
+    st.stop()
 
 # [STEP 1] 결제 정보
 st.subheader("1. 결제 정보 입력")
@@ -183,35 +204,32 @@ all_clear = is_high_price_checked and basic_files_ok and extra_requirements_met
 
 if all_clear:
     if st.button("제출하기 (Submit)", type="primary"):
-        progress_text = st.empty()
-        progress_text.text("⏳ GCS 창고에 안전하게 저장 중입니다...")
+        status_box = st.empty()
+        status_box.info("⏳ 메일 발송 중입니다... (창을 닫지 마세요)")
         
-        file_links = {}
-        for key, file_obj in uploaded_files.items():
-            if file_obj is not None:
-                # 파일명: 날짜_항목_파일명
-                safe_filename = f"{datetime.datetime.now().strftime('%Y%m%d')}_{category}_{file_obj.name}"
-                link = upload_to_gcs(file_obj, safe_filename)
-                file_links[key] = link if link else "업로드 실패"
-
+        # 메일 발송용 데이터 정리
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        extra_link = "-"
-        # 우선순위에 따라 추가 증빙 링크 하나 선택 (엑셀 칸 절약을 위해)
-        for k in ['order_capture', 'conf_reg', 'poster_file', 'paper_cover', 'detail_receipt', 'book_cover', 'figure_file']:
-             if file_links.get(k): extra_link = file_links[k]; break
+        mail_summary = {
+            "성명": user_name,
+            "과제": project,
+            "항목": category,
+            "결제수단": payment_method,
+            "고액": amount_check,
+            "사유": reason_text if reason_text else "-",
+            "날짜": current_time
+        }
 
-        row_data = [
-            current_time, payment_method, project, category, amount_check, reason_text,
-            file_links.get('audit_proof', "-"),
-            file_links.get('tax_invoice', "-"),
-            file_links.get('statement', "-"),
-            extra_link
-        ]
-
-        if save_to_google_sheets(row_data):
-            progress_text.empty()
+        # 메일 발송 실행
+        if send_email_with_attachments(mail_summary, uploaded_files):
+            status_box.empty()
             st.balloons()
-            st.success("✅ 제출 완료! 담당자가 곧 확인합니다.")
+            st.success(f"""
+                ✅ 제출 완료!
+                담당자({st.secrets['email']['receiver_address']})에게 
+                증빙 서류 파일이 첨부된 메일이 전송되었습니다.
+            """)
+        else:
+            status_box.error("메일 발송에 실패했습니다. (Secrets 설정을 확인하세요)")
 else:
     st.error("🚫 필수 서류 누락")
     st.button("제출 불가", disabled=True)
