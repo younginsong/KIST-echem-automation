@@ -6,29 +6,30 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
 # ==========================================
-# [기능] 이메일 발송 함수 (다중 수신자 지원)
+# [기능] 이메일 발송 함수 (수정됨: 동적 데이터 반영)
 # ==========================================
 def send_email_with_attachments(data_summary, files_dict):
     try:
         # Secrets에서 이메일 정보 가져오기
         sender_email = st.secrets["email"]["sender_address"]
         sender_pass = st.secrets["email"]["sender_password"]
-        receiver_emails = st.secrets["email"]["receiver_address"] # "a@kist.re.kr, b@kist.re.kr" 형태
+        receiver_emails = st.secrets["email"]["receiver_address"]
 
         # 이메일 기본 설정
         msg = MIMEMultipart()
+        # 제목에도 신청자 이름과 항목이 들어가게 설정
         msg['Subject'] = f"[연구비제출] {data_summary['성명']} - {data_summary['항목']} ({data_summary['날짜']})"
         msg['From'] = sender_email
-        msg['To'] = receiver_emails # 콤마로 구분된 문자열을 그대로 넣으면 됨
+        msg['To'] = receiver_emails
 
-        # 본문 내용 작성 (HTML)
+        # 본문 내용 작성 (HTML) - 여기 있는 변수들이 고정되지 않고 바뀌어야 함
         body = f"""
         <h3>🧾 연구비 증빙 서류 제출 알림</h3>
         <p>연구비 지출 증빙 서류가 접수되었습니다.</p>
-        <p>첨부된 파일들을 확인하여 행정 시스템에 등록 부탁드립니다.</p>
+        <p>아래 내용을 확인하여 시스템에 등록 부탁드립니다.</p>
         <hr>
         <ul>
-            <li><b>성명:</b> {data_summary['성명']}</li>
+            <li><b>성명:</b> <span style="color:blue;">{data_summary['성명']}</span></li>
             <li><b>과제명:</b> {data_summary['과제']}</li>
             <li><b>지출항목:</b> {data_summary['항목']} ({data_summary['결제수단']})</li>
             <li><b>고액여부:</b> {data_summary['고액']}</li>
@@ -36,7 +37,7 @@ def send_email_with_attachments(data_summary, files_dict):
             <li><b>제출일시:</b> {data_summary['날짜']}</li>
         </ul>
         <hr>
-        <p>※ 이 메일은 Streamlit 앱에서 자동 발송되었습니다.</p>
+        <p>※ 첨부된 파일({len([f for f in files_dict.values() if f is not None])}개)을 확인해주세요.</p>
         """
         msg.attach(MIMEText(body, 'html'))
 
@@ -51,11 +52,10 @@ def send_email_with_attachments(data_summary, files_dict):
                 part.add_header('Content-Disposition', 'attachment', filename=safe_name)
                 msg.attach(part)
 
-        # 메일 서버 연결 및 전송 (Gmail)
+        # 메일 전송
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()
             server.login(sender_email, sender_pass)
-            # send_message는 To 헤더에 여러 명이 있으면 알아서 다 보냅니다.
             server.send_message(msg)
         
         return True
@@ -72,7 +72,7 @@ st.title("🧾 연구비 지출 증빙 제출 시스템")
 st.markdown("### 🚨 안내: 작성된 내용은 담당자에게 메일로 전송됩니다.")
 st.divider()
 
-# [STEP 0] 사용자 이름 입력 (71명 명단 반영)
+# [STEP 0] 사용자 이름 입력
 st.subheader("0. 신청자 정보")
 
 # 전체 명단 리스트 (가나다순)
@@ -220,15 +220,17 @@ if all_clear:
         status_box = st.empty()
         status_box.info("⏳ 메일 발송 중입니다... (창을 닫지 마세요)")
         
-        # 메일 발송용 데이터 정리
+        # [중요] 메일 발송용 데이터 패키징 (버튼 누르는 시점의 값을 가져옴)
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 화면에 있는 변수들을 그대로 사전(dictionary)에 담습니다.
         mail_summary = {
-            "성명": user_name,
-            "과제": project,
-            "항목": category,
-            "결제수단": payment_method,
-            "고액": amount_check,
-            "사유": reason_text if reason_text else "-",
+            "성명": user_name,      # 위에서 선택한 user_name
+            "과제": project,        # 위에서 선택한 project
+            "항목": category,       # 위에서 선택한 category
+            "결제수단": payment_method, # 위에서 선택한 payment_method
+            "고액": amount_check,   # 위에서 선택한 amount_check
+            "사유": reason_text if reason_text else "-", # 위에서 입력한 reason_text
             "날짜": current_time
         }
 
@@ -236,15 +238,17 @@ if all_clear:
         if send_email_with_attachments(mail_summary, uploaded_files):
             status_box.empty()
             st.balloons()
-            # secrets에 있는 수신자 정보를 보여주기 위해 가져옴
+            
+            # 수신자 정보 표시
             receivers = st.secrets["email"]["receiver_address"]
             st.success(f"""
                 ✅ 제출 완료!
-                담당자({receivers})에게 
-                증빙 서류 파일이 첨부된 메일이 전송되었습니다.
+                
+                입력하신 정보가 담당자({receivers})에게 
+                성공적으로 전송되었습니다.
             """)
         else:
-            status_box.error("메일 발송에 실패했습니다. (Secrets 설정을 확인하세요)")
+            status_box.error("메일 발송에 실패했습니다.")
 else:
     st.error("🚫 필수 서류 누락")
     st.button("제출 불가", disabled=True)
