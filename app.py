@@ -9,7 +9,7 @@ import datetime
 # [설정] 구글 드라이브 폴더 ID 입력 (필수!)
 # ==========================================
 # 아까 복사해둔 구글 드라이브 폴더 ID를 아래 따옴표 안에 넣으세요.
-DRIVE_FOLDER_ID = "1K2OV3vhoe8U1pdNupSgt_KeN_KMdOYU7?hl"
+DRIVE_FOLDER_ID = "1K2OV3vhoe8U1pdNupSgt_KeN_KMdOYU7"
 
 
 # ==========================================
