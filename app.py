@@ -47,7 +47,7 @@ def save_to_google_sheets(data):
         creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
         client = gspread.authorize(creds)
         
-        sheet = client.open("연구비지출대장_2025").sheet1 
+        sheet = client.open("log_sheet").sheet1 
         sheet.append_row(data)
         return True
     except Exception as e:
