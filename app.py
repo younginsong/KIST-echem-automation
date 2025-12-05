@@ -6,20 +6,20 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
 # ==========================================
-# [기능] 이메일 발송 함수 (파일 첨부 포함)
+# [기능] 이메일 발송 함수 (다중 수신자 지원)
 # ==========================================
 def send_email_with_attachments(data_summary, files_dict):
     try:
         # Secrets에서 이메일 정보 가져오기
         sender_email = st.secrets["email"]["sender_address"]
         sender_pass = st.secrets["email"]["sender_password"]
-        receiver_email = st.secrets["email"]["receiver_address"]
+        receiver_emails = st.secrets["email"]["receiver_address"] # "a@kist.re.kr, b@kist.re.kr" 형태
 
         # 이메일 기본 설정
         msg = MIMEMultipart()
         msg['Subject'] = f"[연구비제출] {data_summary['성명']} - {data_summary['항목']} ({data_summary['날짜']})"
         msg['From'] = sender_email
-        msg['To'] = receiver_email
+        msg['To'] = receiver_emails # 콤마로 구분된 문자열을 그대로 넣으면 됨
 
         # 본문 내용 작성 (HTML)
         body = f"""
@@ -43,14 +43,10 @@ def send_email_with_attachments(data_summary, files_dict):
         # 파일 첨부하기
         for key, file_obj in files_dict.items():
             if file_obj is not None:
-                # 파일 포인터를 처음으로 되돌림
                 file_obj.seek(0)
-                
-                # 파일 이름 정리 (한글 깨짐 방지 등은 메일 클라이언트에 따라 다르지만, 식별 가능한 이름으로 전송)
-                # 예: 20250505_안희영_재료비_영수증.png
+                # 파일명 정리 (날짜_이름_항목_파일명)
                 safe_name = f"{data_summary['날짜'][:10]}_{data_summary['성명']}_{key}_{file_obj.name}"
                 
-                # 파일 읽어서 첨부
                 part = MIMEApplication(file_obj.read(), Name=safe_name)
                 part.add_header('Content-Disposition', 'attachment', filename=safe_name)
                 msg.attach(part)
@@ -59,6 +55,7 @@ def send_email_with_attachments(data_summary, files_dict):
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()
             server.login(sender_email, sender_pass)
+            # send_message는 To 헤더에 여러 명이 있으면 알아서 다 보냅니다.
             server.send_message(msg)
         
         return True
@@ -75,8 +72,10 @@ st.title("🧾 연구비 지출 증빙 제출 시스템")
 st.markdown("### 🚨 안내: 작성된 내용은 담당자에게 메일로 전송됩니다.")
 st.divider()
 
-# 전체 명단 리스트 (총 71명, 가나다순 정렬)
-# 안희영님은 편의를 위해 맨 위에 고정했습니다.
+# [STEP 0] 사용자 이름 입력 (71명 명단 반영)
+st.subheader("0. 신청자 정보")
+
+# 전체 명단 리스트 (가나다순)
 member_list = [
     "선택하세요",
     "안희영", 
@@ -237,13 +236,9 @@ if all_clear:
         if send_email_with_attachments(mail_summary, uploaded_files):
             status_box.empty()
             st.balloons()
+            # secrets에 있는 수신자 정보를 보여주기 위해 가져옴
+            receivers = st.secrets["email"]["receiver_address"]
             st.success(f"""
                 ✅ 제출 완료!
-                담당자({st.secrets['email']['receiver_address']})에게 
+                담당자({receivers})에게 
                 증빙 서류 파일이 첨부된 메일이 전송되었습니다.
-            """)
-        else:
-            status_box.error("메일 발송에 실패했습니다. (Secrets 설정을 확인하세요)")
-else:
-    st.error("🚫 필수 서류 누락")
-    st.button("제출 불가", disabled=True)
