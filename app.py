@@ -6,27 +6,23 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
 # ==========================================
-# [설정] 페이지 및 디자인 (CSS 수정)
+# [설정] 페이지 및 디자인
 # ==========================================
 st.set_page_config(page_title="연구비 증빙 제출 시스템", page_icon="🧾", layout="wide")
 
-# ★ 수정사항 2번: 업로드 박스 디자인 개선 (CSS 주입)
 st.markdown("""
     <style>
-    /* 파일 업로더 영역 스타일 */
     [data-testid="stFileUploader"] {
-        background-color: #f8f9fa; /* 평소엔 아주 연한 회색 */
-        border: 2px dashed #cccccc; /* 점선 테두리 */
+        background-color: #f8f9fa;
+        border: 2px dashed #cccccc;
         border-radius: 10px;
         padding: 15px;
-        transition: all 0.3s ease; /* 부드럽게 변하는 효과 */
+        transition: all 0.3s ease;
     }
-    /* 마우스가 올라가거나 파일을 드래그해서 올렸을 때 */
     [data-testid="stFileUploader"]:hover {
-        background-color: #e3e6ea; /* 배경이 진한 회색으로 변함 */
-        border-color: #4CAF50;     /* 테두리가 초록색으로 변함 */
+        background-color: #e3e6ea;
+        border-color: #4CAF50;
     }
-    /* 업로드 영역 안의 텍스트 조금 더 잘 보이게 */
     [data-testid="stFileUploader"] section > div {
         color: #333333;
     }
@@ -37,9 +33,16 @@ st.title("🧾 연구비 지출 증빙 제출 시스템")
 st.markdown("### 🚨 안내: 작성된 내용은 담당자에게 메일로 전송됩니다.")
 st.divider()
 
+# ==========================================
+# [기능 0] 상태 초기화 함수 (버그 수정의 핵심!)
+# ==========================================
+def reset_amount_check():
+    # 결제 수단이 바뀌면 고액 여부를 무조건 '아니오'로 돌려놓음
+    st.session_state['amount_radio_key'] = "아니오 (100만 원 미만)"
+
 
 # ==========================================
-# [기능] 이메일 발송 함수
+# [기능 1] 이메일 발송 함수
 # ==========================================
 def send_email_with_attachments(data_summary, files_dict):
     try:
@@ -96,7 +99,6 @@ def send_email_with_attachments(data_summary, files_dict):
 # [STEP 0] 사용자 이름 입력
 st.subheader("0. 신청자 정보")
 
-# 전체 명단 리스트 (가나다순)
 member_list = [
     "선택하세요",
     "안희영", 
@@ -121,7 +123,15 @@ if user_name == "선택하세요":
 st.subheader("1. 결제 정보 입력")
 col1, col2 = st.columns(2)
 with col1:
-    payment_method = st.radio("결제 수단을 선택하세요", ["법인카드", "연구비카드", "세금계산서"])
+    # ★ 수정 포인트: on_change=reset_amount_check 추가
+    # 결제수단을 바꿀 때마다 reset_amount_check 함수를 실행해서 2번을 초기화함
+    payment_method = st.radio(
+        "결제 수단을 선택하세요", 
+        ["법인카드", "연구비카드", "세금계산서"],
+        key="payment_method_radio",
+        on_change=reset_amount_check
+    )
+
 with col2:
     if payment_method == "법인카드":
         available_projects = ["법인공용-운영비", "법인공용-LINC사업"]
@@ -138,11 +148,20 @@ if project == "선택하세요":
 # [STEP 2] 고액 결제 확인
 st.divider()
 st.subheader("2. 고액 결제 여부")
-amount_check = st.radio("100만 원 이상입니까?", ["아니오", "네 (100만 원 이상)"], horizontal=True)
+
+# ★ 수정 포인트: key="amount_radio_key" 추가
+# 이 키를 통해 위에서 강제로 값을 바꿀 수 있음
+amount_check = st.radio(
+    "100만 원 이상입니까?", 
+    ["아니오 (100만 원 미만)", "네 (100만 원 이상)"], 
+    horizontal=True,
+    key="amount_radio_key" 
+)
+
 uploaded_files = {} 
 is_high_price_checked = True 
 
-# 파일 형식 png, pdf, jpeg
+# 파일 확장자 설정 (jpg 제외함)
 file_types = ['png', 'pdf', 'jpeg']
 
 if amount_check == "네 (100만 원 이상)":
@@ -174,7 +193,7 @@ extra_requirements_met = False
 reason_text = ""
 def check_is_online(): return st.checkbox("인터넷 주문입니까? (쿠팡 등)", value=True)
 
-# 로직 시작 (파일 업로더 type=file_types 로 모두 변경함)
+# 로직 시작
 if category == "재료비":
     extra_requirements_met = True
 elif category == "연구실 환경 유지비":
