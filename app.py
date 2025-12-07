@@ -6,23 +6,52 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 
 # ==========================================
-# [기능] 이메일 발송 함수 (수정됨: 동적 데이터 반영)
+# [설정] 페이지 및 디자인 (CSS 수정)
+# ==========================================
+st.set_page_config(page_title="연구비 증빙 제출 시스템", page_icon="🧾", layout="wide")
+
+# ★ 수정사항 2번: 업로드 박스 디자인 개선 (CSS 주입)
+st.markdown("""
+    <style>
+    /* 파일 업로더 영역 스타일 */
+    [data-testid="stFileUploader"] {
+        background-color: #f8f9fa; /* 평소엔 아주 연한 회색 */
+        border: 2px dashed #cccccc; /* 점선 테두리 */
+        border-radius: 10px;
+        padding: 15px;
+        transition: all 0.3s ease; /* 부드럽게 변하는 효과 */
+    }
+    /* 마우스가 올라가거나 파일을 드래그해서 올렸을 때 */
+    [data-testid="stFileUploader"]:hover {
+        background-color: #e3e6ea; /* 배경이 진한 회색으로 변함 */
+        border-color: #4CAF50;     /* 테두리가 초록색으로 변함 */
+    }
+    /* 업로드 영역 안의 텍스트 조금 더 잘 보이게 */
+    [data-testid="stFileUploader"] section > div {
+        color: #333333;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("🧾 연구비 지출 증빙 제출 시스템")
+st.markdown("### 🚨 안내: 작성된 내용은 담당자에게 메일로 전송됩니다.")
+st.divider()
+
+
+# ==========================================
+# [기능] 이메일 발송 함수
 # ==========================================
 def send_email_with_attachments(data_summary, files_dict):
     try:
-        # Secrets에서 이메일 정보 가져오기
         sender_email = st.secrets["email"]["sender_address"]
         sender_pass = st.secrets["email"]["sender_password"]
         receiver_emails = st.secrets["email"]["receiver_address"]
 
-        # 이메일 기본 설정
         msg = MIMEMultipart()
-        # 제목에도 신청자 이름과 항목이 들어가게 설정
         msg['Subject'] = f"[연구비제출] {data_summary['성명']} - {data_summary['항목']} ({data_summary['날짜']})"
         msg['From'] = sender_email
         msg['To'] = receiver_emails
 
-        # 본문 내용 작성 (HTML) - 여기 있는 변수들이 고정되지 않고 바뀌어야 함
         body = f"""
         <h3>🧾 연구비 증빙 서류 제출 알림</h3>
         <p>연구비 지출 증빙 서류가 접수되었습니다.</p>
@@ -41,18 +70,14 @@ def send_email_with_attachments(data_summary, files_dict):
         """
         msg.attach(MIMEText(body, 'html'))
 
-        # 파일 첨부하기
         for key, file_obj in files_dict.items():
             if file_obj is not None:
                 file_obj.seek(0)
-                # 파일명 정리 (날짜_이름_항목_파일명)
                 safe_name = f"{data_summary['날짜'][:10]}_{data_summary['성명']}_{key}_{file_obj.name}"
-                
                 part = MIMEApplication(file_obj.read(), Name=safe_name)
                 part.add_header('Content-Disposition', 'attachment', filename=safe_name)
                 msg.attach(part)
 
-        # 메일 전송
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()
             server.login(sender_email, sender_pass)
@@ -67,10 +92,6 @@ def send_email_with_attachments(data_summary, files_dict):
 # ==========================================
 # [UI] 화면 구성
 # ==========================================
-st.set_page_config(page_title="연구비 증빙 제출 시스템", page_icon="🧾", layout="wide")
-st.title("🧾 연구비 지출 증빙 제출 시스템")
-st.markdown("### 🚨 안내: 작성된 내용은 담당자에게 메일로 전송됩니다.")
-st.divider()
 
 # [STEP 0] 사용자 이름 입력
 st.subheader("0. 신청자 정보")
@@ -121,9 +142,12 @@ amount_check = st.radio("100만 원 이상입니까?", ["아니오", "네 (100�
 uploaded_files = {} 
 is_high_price_checked = True 
 
+# ★ 수정사항 1번: 파일 형식 jpg, jpeg 추가
+file_types = ['png', 'pdf', 'jpeg']
+
 if amount_check == "네 (100만 원 이상)":
     st.error("💰 고액 건: 사전 검수 내역 필수")
-    uploaded_files['audit_proof'] = st.file_uploader("★ 검수 완료 캡처 [필수]", type=['png', 'pdf'])
+    uploaded_files['audit_proof'] = st.file_uploader("★ 검수 완료 캡처 [필수]", type=file_types)
     if not uploaded_files.get('audit_proof'): is_high_price_checked = False
 
 # [STEP 3] 상세 항목
@@ -142,15 +166,15 @@ st.markdown(f"**[{category}]** 선택함 - 필수 서류를 제출하세요.")
 c1, c2 = st.columns(2)
 with c1:
     if "카드" in payment_method: st.success("💳 카드는 거래명세서만 제출")
-    else: uploaded_files['tax_invoice'] = st.file_uploader("1. 세금계산서 [필수]", type=['pdf', 'xml', 'png'])
+    else: uploaded_files['tax_invoice'] = st.file_uploader("1. 세금계산서 [필수]", type=file_types)
 with c2:
-    uploaded_files['statement'] = st.file_uploader("2. 거래명세서 [필수]", type=['png', 'pdf'])
+    uploaded_files['statement'] = st.file_uploader("2. 거래명세서 [필수]", type=file_types)
 
 extra_requirements_met = False 
 reason_text = ""
 def check_is_online(): return st.checkbox("인터넷 주문입니까? (쿠팡 등)", value=True)
 
-# 로직 시작
+# 로직 시작 (파일 업로더 type=file_types 로 모두 변경함)
 if category == "재료비":
     extra_requirements_met = True
 elif category == "연구실 환경 유지비":
@@ -158,38 +182,38 @@ elif category == "연구실 환경 유지비":
         reason_text = st.text_input("4. 필요 사유 [필수]")
         if reason_text: extra_requirements_met = True
     else:
-        uploaded_files['order_capture'] = st.file_uploader("3. 주문내역 캡처", type=['png', 'pdf'])
+        uploaded_files['order_capture'] = st.file_uploader("3. 주문내역 캡처", type=file_types)
         reason_text = st.text_input("4. 필요 사유 [필수]")
         if uploaded_files.get('order_capture') and reason_text: extra_requirements_met = True
 elif category == "사무기기 및 SW":
     is_online = False
     if payment_method != "세금계산서": is_online = check_is_online()
-    if is_online: uploaded_files['order_capture'] = st.file_uploader("3. 인터넷 주문내역", type=['png', 'pdf'])
+    if is_online: uploaded_files['order_capture'] = st.file_uploader("3. 인터넷 주문내역", type=file_types)
     reason_text = st.text_input("4. 사유 [필수]")
     if reason_text:
         if is_online and not uploaded_files.get('order_capture'): extra_requirements_met = False
         else: extra_requirements_met = True
 elif category == "학회/세미나 등록비":
     c_a, c_b, c_c = st.columns(3)
-    uploaded_files['conf_reg'] = c_a.file_uploader("3. 학회등록증", type=['pdf', 'png'])
-    uploaded_files['conf_info'] = c_b.file_uploader("4. 일시/장소", type=['png', 'pdf'])
-    uploaded_files['conf_fee'] = c_c.file_uploader("5. 등록비 기준표", type=['png', 'pdf'])
+    uploaded_files['conf_reg'] = c_a.file_uploader("3. 학회등록증", type=file_types)
+    uploaded_files['conf_info'] = c_b.file_uploader("4. 일시/장소", type=file_types)
+    uploaded_files['conf_fee'] = c_c.file_uploader("5. 등록비 기준표", type=file_types)
     if uploaded_files.get('conf_reg') and uploaded_files.get('conf_info') and uploaded_files.get('conf_fee'): extra_requirements_met = True
 elif category == "인쇄비 (포스터/책)":
     print_type = st.radio("인쇄 종류", ["포스터", "책"])
     if print_type == "포스터":
-        uploaded_files['poster_file'] = st.file_uploader("3. 포스터 원본", type=['pdf'])
+        uploaded_files['poster_file'] = st.file_uploader("3. 포스터 원본", type=file_types)
         if uploaded_files.get('poster_file'): extra_requirements_met = True
     else:
-        uploaded_files['book_cover'] = st.file_uploader("3. 책 앞표지", type=['png', 'pdf'])
+        uploaded_files['book_cover'] = st.file_uploader("3. 책 앞표지", type=file_types)
         if uploaded_files.get('book_cover'): extra_requirements_met = True
 elif category == "논문 게재료":
     paper_type = st.radio("비용 종류", ["게재/교정료", "삽화"])
     if paper_type == "게재/교정료":
-        uploaded_files['paper_cover'] = st.file_uploader("3. 논문 표지", type=['pdf', 'png'])
+        uploaded_files['paper_cover'] = st.file_uploader("3. 논문 표지", type=file_types)
         if uploaded_files.get('paper_cover'): extra_requirements_met = True
     else:
-        uploaded_files['figure_file'] = st.file_uploader("3. 그림 파일", type=['png', 'pdf'])
+        uploaded_files['figure_file'] = st.file_uploader("3. 그림 파일", type=file_types)
         if uploaded_files.get('figure_file'): extra_requirements_met = True
 elif category == "연구실 운영비 (식대/다과)":
     is_under_100k = st.checkbox("10만 원 미만입니까?", value=False)
@@ -199,10 +223,10 @@ elif category == "연구실 운영비 (식대/다과)":
     else:
         buy_route = st.radio("구매 경로", ["인터넷 주문", "오프라인 매장"])
         if buy_route == "인터넷 주문":
-            uploaded_files['order_capture'] = st.file_uploader("3. 주문내역 캡처", type=['png', 'pdf'])
+            uploaded_files['order_capture'] = st.file_uploader("3. 주문내역 캡처", type=file_types)
             if uploaded_files.get('order_capture'): extra_requirements_met = True
         else:
-            uploaded_files['detail_receipt'] = st.file_uploader("3. 상세 영수증", type=['png', 'pdf'])
+            uploaded_files['detail_receipt'] = st.file_uploader("3. 상세 영수증", type=file_types)
             if uploaded_files.get('detail_receipt'): extra_requirements_met = True
 
 # [STEP 4] 제출 버튼
@@ -220,30 +244,23 @@ if all_clear:
         status_box = st.empty()
         status_box.info("⏳ 메일 발송 중입니다... (창을 닫지 마세요)")
         
-        # [중요] 메일 발송용 데이터 패키징 (버튼 누르는 시점의 값을 가져옴)
         current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        
-        # 화면에 있는 변수들을 그대로 사전(dictionary)에 담습니다.
         mail_summary = {
-            "성명": user_name,      # 위에서 선택한 user_name
-            "과제": project,        # 위에서 선택한 project
-            "항목": category,       # 위에서 선택한 category
-            "결제수단": payment_method, # 위에서 선택한 payment_method
-            "고액": amount_check,   # 위에서 선택한 amount_check
-            "사유": reason_text if reason_text else "-", # 위에서 입력한 reason_text
+            "성명": user_name,
+            "과제": project,
+            "항목": category,
+            "결제수단": payment_method,
+            "고액": amount_check,
+            "사유": reason_text if reason_text else "-",
             "날짜": current_time
         }
 
-        # 메일 발송 실행
         if send_email_with_attachments(mail_summary, uploaded_files):
             status_box.empty()
             st.balloons()
-            
-            # 수신자 정보 표시
             receivers = st.secrets["email"]["receiver_address"]
             st.success(f"""
                 ✅ 제출 완료!
-                
                 입력하신 정보가 담당자({receivers})에게 
                 성공적으로 전송되었습니다.
             """)
