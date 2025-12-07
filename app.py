@@ -34,7 +34,7 @@ st.markdown("### 🚨 안내: 작성된 내용은 안희영 선생님에게 메�
 st.divider()
 
 # ==========================================
-# [기능 0] 상태 초기화 함수 (버그 수정의 핵심!)
+# [기능 0] 상태 초기화 함수
 # ==========================================
 def reset_amount_check():
     # 결제 수단이 바뀌면 고액 여부를 무조건 '아니오'로 돌려놓음
@@ -196,9 +196,19 @@ elif category == "연구실 환경 유지비":
         reason_text = st.text_input("4. 필요 사유 [필수]")
         if reason_text: extra_requirements_met = True
     else:
-        uploaded_files['order_capture'] = st.file_uploader("3. 주문내역 캡처", type=file_types)
+        # ★ 수정됨: 여기서도 인터넷 주문 여부를 물어봄
+        is_online = check_is_online()
+        if is_online:
+            uploaded_files['order_capture'] = st.file_uploader("3. 인터넷 주문내역 캡처", type=file_types)
+        else:
+            uploaded_files['detail_receipt'] = st.file_uploader("3. 상세 영수증 (품목 확인용)", type=file_types)
+            
         reason_text = st.text_input("4. 필요 사유 [필수]")
-        if uploaded_files.get('order_capture') and reason_text: extra_requirements_met = True
+        
+        # 조건 확인: (주문내역 또는 상세영수증) AND 사유
+        has_file = uploaded_files.get('order_capture') or uploaded_files.get('detail_receipt')
+        if has_file and reason_text: extra_requirements_met = True
+        
 elif category == "사무기기 및 SW":
     is_online = False
     if payment_method != "세금계산서": is_online = check_is_online()
