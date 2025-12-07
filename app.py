@@ -262,7 +262,10 @@ if all_clear:
         status_box = st.empty()
         status_box.info("⏳ 메일 발송 중입니다... (창을 닫지 마세요)")
         
-        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        # [수정] 한국 시간(KST = UTC+9) 설정
+        kst = datetime.timezone(datetime.timedelta(hours=9))
+        current_time = datetime.datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
+        
         mail_summary = {
             "성명": user_name,
             "과제": project,
