@@ -142,7 +142,7 @@ amount_check = st.radio("100만 원 이상입니까?", ["아니오", "네 (100�
 uploaded_files = {} 
 is_high_price_checked = True 
 
-# ★ 수정사항 1번: 파일 형식 jpg, jpeg 추가
+# 파일 형식 png, pdf, jpeg
 file_types = ['png', 'pdf', 'jpeg']
 
 if amount_check == "네 (100만 원 이상)":
