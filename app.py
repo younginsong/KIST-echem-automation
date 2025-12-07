@@ -30,7 +30,7 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 st.title("🧾 연구비 지출 증빙 제출 시스템")
-st.markdown("### 🚨 안내: 작성된 내용은 담당자에게 메일로 전송됩니다.")
+st.markdown("### 🚨 안내: 작성된 내용은 안희영 선생님에게 메일로 전송됩니다.")
 st.divider()
 
 # ==========================================
@@ -259,7 +259,7 @@ else:
 all_clear = is_high_price_checked and basic_files_ok and extra_requirements_met
 
 if all_clear:
-    if st.button("메일 보내기 (Submit)", type="primary"):
+    if st.button("선생님에게 메일 보내기 (Submit)", type="primary"):
         status_box = st.empty()
         status_box.info("⏳ 메일 발송 중입니다... (창을 닫지 마세요)")
         
