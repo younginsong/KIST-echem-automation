@@ -66,7 +66,7 @@ def send_email_with_attachments(data_summary, files_dict):
             <li><b>지출항목:</b> {data_summary['항목']} ({data_summary['결제수단']})</li>
             <li><b>고액여부:</b> {data_summary['고액']}</li>
             <li><b>사유/내용:</b> {data_summary['사유']}</li>
-            <li><b>제출일시:</b> {data_summary['날짜']}</li>
+            <li><b>제출일시:</b> {data_summary['날짜']} (KST)</li>
         </ul>
         <hr>
         <p>※ 첨부된 파일({len([f for f in files_dict.values() if f is not None])}개)을 확인해주세요.</p>
@@ -122,8 +122,6 @@ if user_name == "선택하세요":
 st.subheader("1. 결제 정보 입력")
 col1, col2 = st.columns(2)
 with col1:
-    # ★ 수정 포인트: on_change=reset_amount_check 추가
-    # 결제수단을 바꿀 때마다 reset_amount_check 함수를 실행해서 2번을 초기화함
     payment_method = st.radio(
         "결제 수단을 선택하세요", 
         ["법인카드", "연구비카드", "세금계산서"],
@@ -148,8 +146,6 @@ if project == "선택하세요":
 st.divider()
 st.subheader("2. 고액 결제 여부")
 
-# ★ 수정 포인트: key="amount_radio_key" 추가
-# 이 키를 통해 위에서 강제로 값을 바꿀 수 있음
 amount_check = st.radio(
     "100만 원 이상입니까?", 
     ["아니오 (100만 원 미만)", "네 (100만 원 이상)"], 
@@ -160,7 +156,7 @@ amount_check = st.radio(
 uploaded_files = {} 
 is_high_price_checked = True 
 
-# 파일 확장자 설정 (jpg 제외함)
+# 파일 확장자 설정 (jpg 제외)
 file_types = ['png', 'pdf', 'jpeg']
 
 if amount_check == "네 (100만 원 이상)":
