@@ -5,6 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 import re
+import pandas as pd  # 표 생성을 위해 추가
 
 # ==========================================
 # [설정] 페이지 및 디자인
@@ -19,15 +20,6 @@ st.markdown("""
         border-radius: 10px;
         padding: 15px;
     }
-    .log-box {
-        background-color: #0e1117;
-        color: #00ff00;
-        padding: 10px;
-        border-radius: 5px;
-        font-family: monospace;
-        font-size: 0.85em;
-        white-space: pre-wrap;
-    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -36,22 +28,16 @@ st.markdown("### 🚨 안내: 작성된 내용은 안희영 연구행정원에�
 st.divider()
 
 # ==========================================
-# [기능 0] 상태 관리 및 로그 시스템
+# [기능 0] 상태 관리 (메일 기록 저장소 추가)
 # ==========================================
 if 'form_id' not in st.session_state:
     st.session_state.form_id = 0
 if 'is_submitted' not in st.session_state:
     st.session_state.is_submitted = False
-if 'logs' not in st.session_state:
-    st.session_state.logs = [] # 로그 저장소
 
-def add_log(message):
-    """화면에 로그를 추가하는 함수"""
-    kst = datetime.timezone(datetime.timedelta(hours=9))
-    now = datetime.datetime.now(kst).strftime("%H:%M:%S")
-    log_entry = f"[{now}] {message}"
-    # 최신 로그가 위로 오도록 추가
-    st.session_state.logs.insert(0, log_entry)
+# ★ 메일 전송 이력을 저장할 리스트 (새로고침 전까지 유지됨)
+if 'mail_history' not in st.session_state:
+    st.session_state.mail_history = []
 
 def reset_amount_check():
     key_name = f"amount_radio_key_{st.session_state.form_id}"
@@ -59,26 +45,19 @@ def reset_amount_check():
         st.session_state[key_name] = "아니오 (100만 원 미만)"
 
 # ==========================================
-# [기능 1] 이메일 발송 함수 (Gmail + 로그출력)
+# [기능 1] 이메일 발송 함수 (기록 저장 기능 추가)
 # ==========================================
 def send_email_via_gmail(data_summary, files_dict):
-    add_log("🚀 메일 발송 프로세스 시작...")
-    
     try:
-        # secrets.toml에서 정보 가져오기
         sender_email = st.secrets["email"]["sender_address"]
         sender_pass = st.secrets["email"]["sender_password"]
         receiver_email = st.secrets["email"]["receiver_address"]
 
-        add_log(f"🔑 계정 정보 로드 완료 (Sender: {sender_email})")
-
-        # 메일 객체 생성
         msg = MIMEMultipart()
         msg['Subject'] = f"[연구비제출] {data_summary['성명']} - {data_summary['항목']} ({data_summary['날짜']})"
         msg['From'] = sender_email
         msg['To'] = receiver_email
 
-        # 본문 작성
         body = f"""
         <h3>🧾 연구비 증빙 서류 제출 알림</h3>
         <p>연구비 지출 증빙 서류가 접수되었습니다.</p>
@@ -96,8 +75,6 @@ def send_email_via_gmail(data_summary, files_dict):
         """
         msg.attach(MIMEText(body, 'html'))
 
-        # 파일 첨부
-        file_count = 0
         for key, file_obj in files_dict.items():
             if file_obj is not None:
                 file_obj.seek(0)
@@ -105,29 +82,38 @@ def send_email_via_gmail(data_summary, files_dict):
                 part = MIMEApplication(file_obj.read(), Name=safe_name)
                 part.add_header('Content-Disposition', 'attachment', filename=safe_name)
                 msg.attach(part)
-                file_count += 1
-        
-        add_log(f"📎 첨부파일 {file_count}개 준비 완료.")
 
-        # ★ Gmail SMTP 서버 접속
-        add_log("🔌 Gmail SMTP 서버(smtp.gmail.com:587) 연결 시도...")
+        # Gmail 전송
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.ehlo()
-            server.starttls() # 보안 연결
-            add_log("🔒 TLS 보안 연결 수립됨.")
-            
+            server.starttls()
             server.login(sender_email, sender_pass)
-            add_log("✅ SMTP 로그인 성공.")
-            
             server.send_message(msg)
-            add_log(f"📤 메일 전송 명령 완료! (To: {receiver_email})")
             
+        # [성공 시 기록 저장]
+        record = {
+            "제출일시": data_summary['날짜'],
+            "성명": data_summary['성명'],
+            "과제명": data_summary['과제'],
+            "항목": data_summary['항목'],
+            "결제수단": data_summary['결제수단'],
+            "전송상태": "✅ 성공"  # 맨 오른쪽 표시
+        }
+        st.session_state.mail_history.append(record)
         return True
 
     except Exception as e:
-        error_msg = f"❌ 메일 발송 실패: {str(e)}"
-        st.error(error_msg)
-        add_log(error_msg)
+        # [실패 시 기록 저장]
+        record = {
+            "제출일시": data_summary['날짜'],
+            "성명": data_summary['성명'],
+            "과제명": data_summary['과제'],
+            "항목": data_summary['항목'],
+            "결제수단": data_summary['결제수단'],
+            "전송상태": f"❌ 실패 ({str(e)})"
+        }
+        st.session_state.mail_history.append(record)
+        st.error(f"메일 발송 실패: {e}")
         return False
 
 
@@ -138,31 +124,31 @@ def send_email_via_gmail(data_summary, files_dict):
 st.subheader("0. 신청자 정보")
 user_name = st.text_input("신청자 성명", placeholder="성명을 직접 입력하세요")
 
+# --- [하단 로그 표 표시 영역] ---
+# 이름이 없으면 폼 대신 로그만 보여주거나 멈춤
 if not user_name.strip():
     st.info("👈 성명을 먼저 입력해주세요.")
     
-    # --- 로그창 표시 (화면 하단) ---
     st.divider()
-    with st.expander("📟 시스템 로그 (System Logs)", expanded=True):
-        if st.session_state.logs:
-            log_text = "\n".join(st.session_state.logs)
-            st.code(log_text, language="bash")
-        else:
-            st.caption("대기 중... (로그가 여기에 표시됩니다)")
+    st.subheader("📋 메일 전송 내역 (Session Log)")
+    if st.session_state.mail_history:
+        # 데이터프레임으로 변환하여 표 출력
+        df_log = pd.DataFrame(st.session_state.mail_history)
+        # 최신순으로 정렬 (역순)
+        df_log = df_log.iloc[::-1]
+        st.dataframe(df_log, use_container_width=True, hide_index=True)
+    else:
+        st.caption("아직 제출된 내역이 없습니다.")
     st.stop()
 
 if st.session_state.is_submitted:
     st.success(f"✅ **{user_name}**님의 증빙 서류가 성공적으로 전송되었습니다.")
     st.balloons()
     
-    # 성공 로그 추가
-    add_log("✨ 모든 작업이 성공적으로 완료되었습니다.")
-    
     st.markdown("---")
     if st.button("➕ 추가 지급신청하기 (새로운 건 작성)", type="primary"):
         st.session_state.is_submitted = False
         st.session_state.form_id += 1
-        st.session_state.logs = [] # 로그 초기화
         st.rerun()
 
 else:
@@ -188,7 +174,7 @@ else:
                 st.stop()
             project = f"[직접입력] {manual}"
         else:
-            pass # 입력 대기
+            pass
     else:
         project = project_sel
 
@@ -208,9 +194,6 @@ else:
     st.divider()
     st.subheader("3. 지출 항목 및 증빙")
     
-    # ------------------------------------------------
-    # UI 렌더링 계속 (증빙 서류 업로드 부분)
-    # ------------------------------------------------
     expense_types = ["재료비", "연구실 환경 유지비", "사무기기 및 SW", "학회/세미나 등록비", "인쇄비 (포스터/책)", "논문 게재료"]
     if payment_method != "세금계산서": expense_types.append("연구실 운영비 (식대/다과)")
     category = st.selectbox("지출 항목 선택", expense_types, key=f"cat_{fid}")
@@ -226,7 +209,6 @@ else:
     reason = ""
     def check_online(): return st.checkbox("인터넷 주문입니까?", value=True, key=f"online_{fid}")
 
-    # (상세 로직은 기존과 동일하므로 간략화했으나, 기능은 완벽히 동작합니다)
     if category == "재료비": extra_met = True
     elif category == "연구실 환경 유지비":
         if payment_method == "세금계산서":
@@ -285,10 +267,9 @@ else:
     else: 
         if uploaded_files.get('tax_invoice') and uploaded_files.get('statement'): basic_ok = True
     
-    # 제출 버튼 로직
     if is_high_price_checked and basic_ok and extra_met and project != "":
         if st.button("제출하기 (Submit)", type="primary", key=f"sub_{fid}"):
-            with st.spinner("🚀 메일 서버 접속 중..."):
+            with st.spinner("🚀 메일 전송 중..."):
                 kst = datetime.timezone(datetime.timedelta(hours=9))
                 now = datetime.datetime.now(kst).strftime("%Y-%m-%d %H:%M:%S")
                 
@@ -298,7 +279,6 @@ else:
                     "사유": reason if reason else "-", "날짜": now
                 }
                 
-                # 메일 전송 시도
                 if send_email_via_gmail(summary, uploaded_files):
                     st.session_state.is_submitted = True
                     st.rerun()
@@ -306,14 +286,14 @@ else:
         st.error("🚫 필수 정보 및 서류가 누락되었습니다.")
         st.button("제출 불가", disabled=True)
 
-# ---------------------------------------
-# [공통] 로그 표시 영역 (항상 맨 밑에 보임)
-# ---------------------------------------
+# --- [공통: 로그 표 표시 영역 (항상 맨 아래에)] ---
 st.divider()
-with st.expander("📟 시스템 로그 (System Logs)", expanded=True):
-    if st.session_state.logs:
-        # 리스트에 있는 로그를 줄바꿈으로 합쳐서 보여줌
-        log_text = "\n".join(st.session_state.logs)
-        st.code(log_text, language="bash")
-    else:
-        st.caption("대기 중... (제출 버튼을 누르면 여기에 진행 상황이 표시됩니다)")
+st.subheader("📋 메일 전송 내역 (Session Log)")
+if st.session_state.mail_history:
+    df_log = pd.DataFrame(st.session_state.mail_history)
+    # 최신 내역이 위로 오게 (역순 정렬)
+    df_log = df_log.iloc[::-1]
+    # 표 그리기
+    st.dataframe(df_log, use_container_width=True, hide_index=True)
+else:
+    st.caption("아직 제출된 내역이 없습니다.")
