@@ -5,7 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 import re
-import pandas as pd  # 표 생성을 위해 추가
+import pandas as pd
 
 # ==========================================
 # [설정] 페이지 및 디자인
@@ -23,10 +23,6 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-st.title("🧾 연구비 지출 증빙 제출 시스템")
-st.markdown("### 🚨 안내: 작성된 내용은 안희영 연구행정원에게 메일로 전송됩니다.")
-st.divider()
-
 # ==========================================
 # [기능 0] 상태 관리 (메일 기록 저장소 추가)
 # ==========================================
@@ -35,7 +31,7 @@ if 'form_id' not in st.session_state:
 if 'is_submitted' not in st.session_state:
     st.session_state.is_submitted = False
 
-# ★ 메일 전송 이력을 저장할 리스트 (새로고침 전까지 유지됨)
+# ★ 메일 전송 이력을 저장할 리스트
 if 'mail_history' not in st.session_state:
     st.session_state.mail_history = []
 
@@ -45,7 +41,32 @@ def reset_amount_check():
         st.session_state[key_name] = "아니오 (100만 원 미만)"
 
 # ==========================================
-# [기능 1] 이메일 발송 함수 (기록 저장 기능 추가)
+# [UI - 사이드바] 로그 항상 표시
+# ==========================================
+with st.sidebar:
+    st.title("📋 전송 내역 (Log)")
+    st.markdown("---")
+    
+    if st.session_state.mail_history:
+        # 데이터프레임 변환
+        df_log = pd.DataFrame(st.session_state.mail_history)
+        # 최신순 정렬 (역순)
+        df_log = df_log.iloc[::-1]
+        
+        # 보기 좋게 일부 컬럼만 선택해서 보여주거나 전체 보여주기
+        # 모바일 등을 고려해 핵심 정보만 보여줍니다.
+        st.dataframe(
+            df_log[['성명', '항목', '전송상태', '제출일시']], 
+            use_container_width=True, 
+            hide_index=True
+        )
+        st.caption(f"총 {len(df_log)}건의 제출 내역이 있습니다.")
+    else:
+        st.info("아직 제출된 내역이 없습니다.")
+        st.caption("제출 버튼을 누르면 여기에 기록됩니다.")
+
+# ==========================================
+# [기능 1] 이메일 발송 함수
 # ==========================================
 def send_email_via_gmail(data_summary, files_dict):
     try:
@@ -97,7 +118,7 @@ def send_email_via_gmail(data_summary, files_dict):
             "과제명": data_summary['과제'],
             "항목": data_summary['항목'],
             "결제수단": data_summary['결제수단'],
-            "전송상태": "✅ 성공"  # 맨 오른쪽 표시
+            "전송상태": "✅ 성공"
         }
         st.session_state.mail_history.append(record)
         return True
@@ -110,7 +131,7 @@ def send_email_via_gmail(data_summary, files_dict):
             "과제명": data_summary['과제'],
             "항목": data_summary['항목'],
             "결제수단": data_summary['결제수단'],
-            "전송상태": f"❌ 실패 ({str(e)})"
+            "전송상태": "❌ 실패"
         }
         st.session_state.mail_history.append(record)
         st.error(f"메일 발송 실패: {e}")
@@ -118,27 +139,17 @@ def send_email_via_gmail(data_summary, files_dict):
 
 
 # ==========================================
-# [UI] 화면 구성
+# [UI] 메인 화면 구성
 # ==========================================
+st.title("🧾 연구비 지출 증빙 제출 시스템")
+st.markdown("### 🚨 안내: 작성된 내용은 안희영 연구행정원에게 메일로 전송됩니다.")
+st.divider()
 
 st.subheader("0. 신청자 정보")
 user_name = st.text_input("신청자 성명", placeholder="성명을 직접 입력하세요")
 
-# --- [하단 로그 표 표시 영역] ---
-# 이름이 없으면 폼 대신 로그만 보여주거나 멈춤
 if not user_name.strip():
     st.info("👈 성명을 먼저 입력해주세요.")
-    
-    st.divider()
-    st.subheader("📋 메일 전송 내역 (Session Log)")
-    if st.session_state.mail_history:
-        # 데이터프레임으로 변환하여 표 출력
-        df_log = pd.DataFrame(st.session_state.mail_history)
-        # 최신순으로 정렬 (역순)
-        df_log = df_log.iloc[::-1]
-        st.dataframe(df_log, use_container_width=True, hide_index=True)
-    else:
-        st.caption("아직 제출된 내역이 없습니다.")
     st.stop()
 
 if st.session_state.is_submitted:
@@ -285,15 +296,3 @@ else:
     else:
         st.error("🚫 필수 정보 및 서류가 누락되었습니다.")
         st.button("제출 불가", disabled=True)
-
-# --- [공통: 로그 표 표시 영역 (항상 맨 아래에)] ---
-st.divider()
-st.subheader("📋 메일 전송 내역 (Session Log)")
-if st.session_state.mail_history:
-    df_log = pd.DataFrame(st.session_state.mail_history)
-    # 최신 내역이 위로 오게 (역순 정렬)
-    df_log = df_log.iloc[::-1]
-    # 표 그리기
-    st.dataframe(df_log, use_container_width=True, hide_index=True)
-else:
-    st.caption("아직 제출된 내역이 없습니다.")
