@@ -31,7 +31,7 @@ if 'form_id' not in st.session_state:
 if 'is_submitted' not in st.session_state:
     st.session_state.is_submitted = False
 
-# ★ 서버 메모리에 로그 저장 (새로고침 해도 유지)
+# ★ 서버 메모리에 로그 저장
 @st.cache_resource
 def get_shared_log():
     return []
@@ -53,7 +53,7 @@ with st.sidebar:
     
     if mail_history:
         df_log = pd.DataFrame(mail_history)
-        df_log = df_log.iloc[::-1] # 최신순 정렬
+        df_log = df_log.iloc[::-1]
         
         st.dataframe(
             df_log[['성명', '항목', '전송상태', '제출일시']], 
@@ -103,7 +103,6 @@ def send_email_via_gmail(data_summary, files_dict):
                 part.add_header('Content-Disposition', 'attachment', filename=safe_name)
                 msg.attach(part)
 
-        # Gmail SMTP 전송
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.ehlo()
             server.starttls()
@@ -219,7 +218,7 @@ else:
     # 인터넷 주문 체크박스 함수
     def check_online(): return st.checkbox("인터넷 주문입니까?", value=True, key=f"online_{fid}")
 
-    # --- [로직 수정 부분 시작] ---
+    # --- [로직 수정 시작] ---
     if category == "재료비": 
         extra_met = True
         
@@ -228,19 +227,19 @@ else:
             reason = st.text_input("4. 필요 사유", key=f"r_{fid}")
             if reason.strip(): extra_met = True
         else:
-            # 온라인/오프라인 여부를 변수에 확실히 저장
+            # 온라인/오프라인 체크
             is_online = check_online()
             
             if is_online:
                 uploaded_files['order'] = st.file_uploader("3. 인터넷 주문내역 캡처", type=file_types, key=f"ord_{fid}")
                 has_evidence = uploaded_files.get('order') is not None
             else:
-                uploaded_files['receipt'] = st.file_uploader("3. 오프라인 영수증", type=file_types, key=f"rec_{fid}")
-                has_evidence = uploaded_files.get('receipt') is not None
+                # 오프라인의 경우: 거래명세서(기본서류)가 있으므로 추가 영수증 불필요
+                st.info("✅ 오프라인 결제는 '거래명세서'로 증빙을 갈음합니다.")
+                has_evidence = True 
             
             reason = st.text_input("4. 필요 사유", key=f"r_{fid}")
             
-            # 증빙 파일이 있고, 사유도 적혀있으면 통과
             if has_evidence and reason.strip(): 
                 extra_met = True
 
@@ -252,16 +251,13 @@ else:
             uploaded_files['order'] = st.file_uploader("3. 주문내역", type=file_types, key=f"ord_{fid}")
             has_evidence = uploaded_files.get('order') is not None
         else:
-            # 사무기기는 오프라인일 때 별도 파일 없으면 그냥 패스 (기존 로직 유지)
             has_evidence = True 
             
         reason = st.text_input("4. 사유", key=f"r_{fid}")
         
         if reason.strip():
-            if is_online and not has_evidence: 
-                extra_met = False
-            else: 
-                extra_met = True
+            if is_online and not has_evidence: extra_met = False
+            else: extra_met = True
                 
     elif category == "학회/세미나 등록비":
         c1,c2,c3 = st.columns(3)
@@ -307,7 +303,6 @@ else:
     else: 
         if uploaded_files.get('tax_invoice') and uploaded_files.get('statement'): basic_ok = True
     
-    # 제출 버튼
     if is_high_price_checked and basic_ok and extra_met and project != "":
         if st.button("제출하기 (Submit)", type="primary", key=f"sub_{fid}"):
             with st.spinner("🚀 메일 전송 중..."):
@@ -324,7 +319,6 @@ else:
                     st.session_state.is_submitted = True
                     st.rerun()
     else:
-        # 디버깅 힌트: 무엇이 부족한지 구체적으로 알려줌
         err_msg = []
         if not is_high_price_checked: err_msg.append("고액결제 검수내역")
         if not basic_ok: err_msg.append("기본서류(거래명세서/계산서)")
