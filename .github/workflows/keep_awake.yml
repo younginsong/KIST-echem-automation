@@ -1,0 +1,15 @@
+name: Keep Streamlit App Awake
+
+on:
+  schedule:
+    # 30분마다 실행 (UTC 기준)
+    - cron: "*/30 * * * *"
+  workflow_dispatch: # 깃허브에서 버튼 눌러서 수동 실행 가능하게 함
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping App
+        # 아래 주소를 본인의 실제 streamlit 앱 주소로 변경하세요!
+        run: curl https://kist-echem-automation-hblz4klwzzhgvfzk99nxfz.streamlit.app/
